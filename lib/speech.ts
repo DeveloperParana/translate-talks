@@ -35,8 +35,24 @@ export function createSpeechEngine(): SpeechEngine {
   let running = false;
   let restartAttempts = 0;
 
+  // Deduplication: buffer finals to merge progressive results
+  let pendingFinal = '';
+  let pendingFinalTimer: ReturnType<typeof setTimeout> | null = null;
+  const FINAL_DEBOUNCE_MS = 400;
+
   const RESTART_BASE_DELAY = 150;
   const MAX_RESTART_ATTEMPTS = 5;
+
+  function flushPendingFinal() {
+    if (pendingFinalTimer) {
+      clearTimeout(pendingFinalTimer);
+      pendingFinalTimer = null;
+    }
+    if (pendingFinal) {
+      engine.onFinal(pendingFinal);
+      pendingFinal = '';
+    }
+  }
 
   const engine: SpeechEngine = {
     onInterim: () => {},
@@ -59,6 +75,7 @@ export function createSpeechEngine(): SpeechEngine {
       shouldRestart = false;
       running = false;
       restartAttempts = 0;
+      flushPendingFinal();
       engine.onStatusChange('stopped');
       try { recognition?.stop(); } catch (_e) { /* already stopped */ }
     },
@@ -106,7 +123,28 @@ export function createSpeechEngine(): SpeechEngine {
         const transcript = event.results[i][0].transcript.trim();
         if (!transcript) continue;
         if (event.results[i].isFinal) {
-          engine.onFinal(transcript);
+          // Check if this is a progressive update of a pending final
+          const isProgressive = pendingFinal &&
+            (transcript.startsWith(pendingFinal) || pendingFinal.startsWith(transcript));
+
+          if (isProgressive) {
+            // Replace buffer with the longer version
+            if (pendingFinalTimer) clearTimeout(pendingFinalTimer);
+            pendingFinal = transcript.length >= pendingFinal.length ? transcript : pendingFinal;
+          } else {
+            // Different phrase — flush any pending final first
+            flushPendingFinal();
+            pendingFinal = transcript;
+          }
+
+          // Debounce: wait for more progressive updates before emitting
+          pendingFinalTimer = setTimeout(() => {
+            if (pendingFinal) {
+              engine.onFinal(pendingFinal);
+              pendingFinal = '';
+            }
+            pendingFinalTimer = null;
+          }, FINAL_DEBOUNCE_MS);
         } else {
           engine.onInterim(transcript);
         }
@@ -115,6 +153,7 @@ export function createSpeechEngine(): SpeechEngine {
 
     recognition.onend = () => {
       if (shouldRestart) {
+        flushPendingFinal();
         setTimeout(safeStart, RESTART_BASE_DELAY);
       } else {
         running = false;
