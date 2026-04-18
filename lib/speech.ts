@@ -81,7 +81,7 @@ export function createSpeechEngine(): SpeechEngine {
       if (shouldRestart) {
         setTimeout(() => {
           try { recognition!.start(); } catch (_e) { /* already running */ }
-        }, 100);
+        }, 300);
       } else {
         running = false;
         engine.onStatusChange('stopped');
@@ -91,11 +91,14 @@ export function createSpeechEngine(): SpeechEngine {
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       if (['no-speech', 'aborted'].includes(event.error)) return;
 
-      if (event.error === 'audio-capture' || event.error === 'network') {
+      // Network and audio-capture errors: notify but keep auto-restart active
+      if (event.error === 'network' || event.error === 'audio-capture') {
         engine.onError(event.error);
+        // onend will fire after this and handle restart via shouldRestart
         return;
       }
 
+      // Fatal errors: stop completely
       shouldRestart = false;
       running = false;
       engine.onError(event.error);
