@@ -48,11 +48,13 @@ export function ControlsBar({
 
   useEffect(() => {
     document.addEventListener('mousemove', resetHideTimer);
+    document.addEventListener('touchstart', resetHideTimer);
     hideTimeoutRef.current = setTimeout(() => {
       controlsRef.current?.classList.add('hidden');
     }, HIDE_DELAY);
     return () => {
       document.removeEventListener('mousemove', resetHideTimer);
+      document.removeEventListener('touchstart', resetHideTimer);
       clearTimeout(hideTimeoutRef.current);
     };
   }, [resetHideTimer]);
