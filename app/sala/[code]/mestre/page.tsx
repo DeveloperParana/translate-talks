@@ -158,6 +158,12 @@ export default function MestrePage() {
     });
   }, []);
 
+  const handleClear = useCallback(() => {
+    setPhrases([]);
+    setInterimText('');
+    channelRef.current.send({ type: 'broadcast', event: 'clear', payload: {} });
+  }, []);
+
   if (blocked) {
     return (
       <div className="home">
@@ -178,7 +184,7 @@ export default function MestrePage() {
       <ControlsBar status={status} onToggle={handleToggle} showMicButton={true}
         roomCode={code} theme={theme} onThemeToggle={handleThemeToggle}
         onFontUp={handleFontUp} onFontDown={handleFontDown}
-        connectedCount={connectedCount} connectionError={connectionError} />
+        connectedCount={connectedCount} onClear={handleClear} connectionError={connectionError} />
       <TranscriptDisplay phrases={phrases} interimText={errorText || interimText} fontSize={fontSize} />
       <RoomCodeDisplay code={code} />
     </>

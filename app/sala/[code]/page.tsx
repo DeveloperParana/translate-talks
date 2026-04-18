@@ -65,6 +65,10 @@ export default function LeitorPage() {
       .on('broadcast', { event: 'interim' }, ({ payload }) => {
         setInterimText(payload.text);
       })
+      .on('broadcast', { event: 'clear' }, () => {
+        setPhrases([]);
+        setInterimText('');
+      })
       .on('presence', { event: 'sync' }, () => {
         setConnectedCount(countPresence(channel.presenceState()));
       })
