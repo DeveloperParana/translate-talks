@@ -145,9 +145,67 @@ body { background-color: var(--bg); }
   border-radius: 12px; color: var(--text-muted); font-size: 14px;
 }
 .room-code span { color: var(--text-final); font-weight: 700; font-size: 18px; letter-spacing: 4px; }
+.room-code-btn {
+  background: none; border: none; color: var(--text-muted); cursor: pointer;
+  display: flex; align-items: center; padding: 4px; border-radius: 4px;
+  transition: color 0.2s ease;
+}
+.room-code-btn:hover { color: var(--text-final); }
+
+.qr-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+}
+.qr-modal {
+  background: #ffffff; border-radius: 16px; padding: 32px;
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+  max-width: 320px; width: 90%;
+}
+.qr-code-text {
+  color: #1a1a2e; font-size: 24px; font-weight: 700; letter-spacing: 6px;
+}
+.qr-url-text {
+  color: #666; font-size: 12px; word-break: break-all; text-align: center;
+}
+.qr-close-btn { max-width: 200px; padding: 12px 24px; font-size: 16px; }
 
 .waiting { color: var(--text-muted); font-size: 20px; animation: pulse 2s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+
+/* Mobile */
+@media (max-width: 768px) {
+  .controls { gap: 8px; padding: 8px 12px; }
+  .logo { width: 28px; height: 28px; }
+  .ctrl-btn { width: 36px; height: 36px; font-size: 14px; }
+  .transcript-area { padding: 64px 16px 48px; }
+  .phrase { margin-bottom: 12px; }
+  .home h1 { font-size: 24px; }
+  .home-actions { padding: 0 20px; }
+  .code-input { font-size: 22px; letter-spacing: 8px; padding: 12px; }
+  .room-code { font-size: 12px; padding: 6px 12px; bottom: 16px; }
+  .room-code span { font-size: 16px; letter-spacing: 3px; }
+  .offline-banner { top: 52px; }
+}
+
+@media (max-width: 480px) {
+  .controls { gap: 6px; padding: 6px 8px; }
+  .ctrl-btn { width: 32px; height: 32px; }
+  .ctrl-btn svg { width: 14px; height: 14px; }
+  .transcript-area { padding: 52px 12px 40px; }
+  .offline-banner { top: 44px; }
+}
+
+/* Landscape on mobile */
+@media (max-height: 500px) {
+  .controls { gap: 6px; padding: 6px 8px; }
+  .ctrl-btn { width: 32px; height: 32px; }
+  .logo { width: 24px; height: 24px; }
+  .transcript-area { padding: 48px 16px 32px; }
+  .phrase { margin-bottom: 8px; }
+  .room-code { bottom: 8px; padding: 4px 12px; }
+  .offline-banner { top: 44px; }
+}
 
 /* Mobile */
 @media (max-width: 768px) {
