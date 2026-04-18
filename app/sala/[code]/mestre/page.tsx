@@ -15,16 +15,12 @@ const MAX_FONT_SIZE = 96;
 const FONT_STEP = 8;
 const DEFAULT_FONT_SIZE = 48;
 
-function countPresence(state: Record<string, unknown[]>): { total: number; hasMestre: boolean } {
+function countPresence(state: Record<string, unknown[]>): { total: number } {
   let total = 0;
-  let hasMestre = false;
   for (const presences of Object.values(state)) {
-    for (const p of presences) {
-      total++;
-      if ((p as { role?: string }).role === 'mestre') hasMestre = true;
-    }
+    total += presences.length;
   }
-  return { total, hasMestre };
+  return { total };
 }
 
 export default function MestrePage() {
@@ -56,20 +52,27 @@ export default function MestrePage() {
 
     channel.on('presence', { event: 'sync' }, () => {
       const state = channel.presenceState();
-      const { total, hasMestre } = countPresence(state);
+      const { total } = countPresence(state);
       setConnectedCount(total);
 
-      // Check if another mestre exists (not us)
-      let otherMestre = false;
+      // Collect all mestre IDs
+      const mestreIds: string[] = [];
       for (const presences of Object.values(state)) {
         for (const p of presences) {
           const pr = p as { role?: string; id?: string };
-          if (pr.role === 'mestre' && pr.id !== myIdRef.current) {
-            otherMestre = true;
+          if (pr.role === 'mestre' && pr.id) {
+            mestreIds.push(pr.id);
           }
         }
       }
-      if (otherMestre) setBlocked(true);
+
+      // If multiple mestres, only the earliest (smallest) ID stays
+      if (mestreIds.length > 1) {
+        mestreIds.sort();
+        if (mestreIds[0] !== myIdRef.current) {
+          setBlocked(true);
+        }
+      }
     });
 
     channel.subscribe(async (channelStatus) => {
