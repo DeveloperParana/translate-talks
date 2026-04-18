@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { getRoomChannel } from '@/lib/room';
@@ -34,6 +34,8 @@ export default function LeitorPage() {
   const [connectedCount, setConnectedCount] = useState(0);
   const [connectionError, setConnectionError] = useState('');
 
+  const phraseIdRef = useRef(0);
+
   useEffect(() => {
     setTheme(localStorage.getItem('tt-theme') || 'dark');
     const saved = parseInt(localStorage.getItem('tt-fontSize') || '', 10);
@@ -57,8 +59,9 @@ export default function LeitorPage() {
 
     channel
       .on('broadcast', { event: 'final' }, ({ payload }) => {
+        const id = ++phraseIdRef.current;
         setPhrases((prev) => {
-          const next = [...prev, { text: payload.text, time: payload.time || '' }];
+          const next = [...prev, { id, text: payload.text, time: payload.time || '' }];
           return next.length > MAX_PHRASES ? next.slice(-MAX_PHRASES) : next;
         });
         setInterimText('');

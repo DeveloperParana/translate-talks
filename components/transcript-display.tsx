@@ -1,6 +1,7 @@
 'use client';
 
 export interface Phrase {
+  id: number;
   text: string;
   time: string;
 }
@@ -18,8 +19,8 @@ export function TranscriptDisplay({ phrases, interimText, fontSize, waitingMessa
   return (
     <main className="transcript-area" role="region" aria-label="Transcrição em tempo real">
       <div className="transcript" style={{ fontSize: `${fontSize}px` }} aria-live="polite" aria-atomic="false">
-        {phrases.map((phrase, i) => (
-          <p key={`${i}-${phrase.text.slice(0, 20)}`} className="phrase">
+        {phrases.map((phrase) => (
+          <p key={phrase.id} className="phrase">
             <span className="timestamp">{phrase.time}</span>
             {phrase.text}
           </p>
