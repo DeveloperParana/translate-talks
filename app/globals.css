@@ -58,7 +58,13 @@ body { background-color: var(--bg); }
   transition: background 0.2s ease;
 }
 .ctrl-btn:hover { background: var(--ctrl-btn-hover); }
-.status { margin-left: auto; font-size: 20px; line-height: 1; }
+.status-dot {
+  margin-left: auto; width: 12px; height: 12px; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3); flex-shrink: 0;
+}
+.status-recording { background: #e53e3e; box-shadow: 0 0 8px #e53e3e; }
+.status-connected { background: #15a04b; box-shadow: 0 0 8px #15a04b; }
+.status-idle { background: rgba(255, 255, 255, 0.3); }
 .connected-badge {
   color: var(--text-muted); font-size: 14px; font-weight: 600;
   display: flex; align-items: center; gap: 4px;
