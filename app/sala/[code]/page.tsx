@@ -31,11 +31,24 @@ export default function LeitorPage() {
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
   const [theme, setTheme] = useState('dark');
   const [connectedCount, setConnectedCount] = useState(0);
+  const [connectionError, setConnectionError] = useState('');
 
   useEffect(() => {
     setTheme(localStorage.getItem('tt-theme') || 'dark');
     const saved = parseInt(localStorage.getItem('tt-fontSize') || '', 10);
     if (saved >= MIN_FONT_SIZE && saved <= MAX_FONT_SIZE) setFontSize(saved);
+  }, []);
+
+  useEffect(() => {
+    const goOffline = () => setConnectionError('Sem conexão com a internet');
+    const goOnline = () => setConnectionError('');
+    window.addEventListener('offline', goOffline);
+    window.addEventListener('online', goOnline);
+    if (!navigator.onLine) goOffline();
+    return () => {
+      window.removeEventListener('offline', goOffline);
+      window.removeEventListener('online', goOnline);
+    };
   }, []);
 
   useEffect(() => {
@@ -95,7 +108,7 @@ export default function LeitorPage() {
       <ControlsBar status={status} showMicButton={false} roomCode={code}
         theme={theme} onThemeToggle={handleThemeToggle}
         onFontUp={handleFontUp} onFontDown={handleFontDown}
-        connectedCount={connectedCount} />
+        connectedCount={connectedCount} connectionError={connectionError} />
       <TranscriptDisplay phrases={phrases} interimText={interimText} fontSize={fontSize}
         waitingMessage="Aguardando mestre iniciar a transcrição..." />
     </>

@@ -15,6 +15,8 @@ interface ControlsBarProps {
   onFontUp: () => void;
   onFontDown: () => void;
   connectedCount?: number;
+  onClear?: () => void;
+  connectionError?: string;
 }
 
 const HIDE_DELAY = 3000;
@@ -29,6 +31,8 @@ export function ControlsBar({
   onFontUp,
   onFontDown,
   connectedCount,
+  onClear,
+  connectionError,
 }: ControlsBarProps) {
   const controlsRef = useRef<HTMLElement>(null);
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -91,6 +95,9 @@ export function ControlsBar({
         </span>
       )}
       <span className={`status-dot ${statusClass}`} title="Status" />
+      {connectionError && (
+        <div className="offline-banner" role="alert">{connectionError}</div>
+      )}
     </header>
   );
 }

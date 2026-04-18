@@ -36,6 +36,7 @@ export default function MestrePage() {
   const [errorText, setErrorText] = useState('');
   const [connectedCount, setConnectedCount] = useState(0);
   const [blocked, setBlocked] = useState(false);
+  const [connectionError, setConnectionError] = useState('');
 
   const speechRef = useRef(createSpeechEngine());
   const channelRef = useRef(supabase.channel(getRoomChannel(code)));
@@ -45,6 +46,18 @@ export default function MestrePage() {
     setTheme(localStorage.getItem('tt-theme') || 'dark');
     const saved = parseInt(localStorage.getItem('tt-fontSize') || '', 10);
     if (saved >= MIN_FONT_SIZE && saved <= MAX_FONT_SIZE) setFontSize(saved);
+  }, []);
+
+  useEffect(() => {
+    const goOffline = () => setConnectionError('Sem conexão com a internet');
+    const goOnline = () => setConnectionError('');
+    window.addEventListener('offline', goOffline);
+    window.addEventListener('online', goOnline);
+    if (!navigator.onLine) goOffline();
+    return () => {
+      window.removeEventListener('offline', goOffline);
+      window.removeEventListener('online', goOnline);
+    };
   }, []);
 
   useEffect(() => {
@@ -165,7 +178,7 @@ export default function MestrePage() {
       <ControlsBar status={status} onToggle={handleToggle} showMicButton={true}
         roomCode={code} theme={theme} onThemeToggle={handleThemeToggle}
         onFontUp={handleFontUp} onFontDown={handleFontDown}
-        connectedCount={connectedCount} />
+        connectedCount={connectedCount} connectionError={connectionError} />
       <TranscriptDisplay phrases={phrases} interimText={errorText || interimText} fontSize={fontSize} />
       <RoomCodeDisplay code={code} />
     </>
