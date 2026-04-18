@@ -47,6 +47,8 @@ export default function MestrePage() {
   const speechRef = useRef(createSpeechEngine());
   const channelRef = useRef(supabase.channel(getRoomChannel(code)));
   const myIdRef = useRef(crypto.randomUUID());
+  const interimTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingInterimRef = useRef<string | null>(null);
 
   useEffect(() => {
     setTheme(localStorage.getItem('tt-theme') || 'dark');
@@ -100,7 +102,10 @@ export default function MestrePage() {
       }
     });
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      if (interimTimerRef.current) clearTimeout(interimTimerRef.current);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {
@@ -114,12 +119,27 @@ export default function MestrePage() {
         return next.length > MAX_PHRASES ? next.slice(-MAX_PHRASES) : next;
       });
       setInterimText('');
+      // Cancel pending interim broadcast since final supersedes it
+      if (interimTimerRef.current) {
+        clearTimeout(interimTimerRef.current);
+        interimTimerRef.current = null;
+      }
+      pendingInterimRef.current = null;
       channel.send({ type: 'broadcast', event: 'final', payload: { text, time } });
     };
 
     speech.onInterim = (text: string) => {
       setInterimText(text);
-      channel.send({ type: 'broadcast', event: 'interim', payload: { text } });
+      // Throttle broadcast to leitores (150ms) to avoid flooding Supabase
+      pendingInterimRef.current = text;
+      if (!interimTimerRef.current) {
+        interimTimerRef.current = setTimeout(() => {
+          if (pendingInterimRef.current !== null) {
+            channel.send({ type: 'broadcast', event: 'interim', payload: { text: pendingInterimRef.current } });
+          }
+          interimTimerRef.current = null;
+        }, 150);
+      }
     };
 
     speech.onStatusChange = (s) => setStatus(s);

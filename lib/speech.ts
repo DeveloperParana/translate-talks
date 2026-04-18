@@ -81,7 +81,7 @@ export function createSpeechEngine(): SpeechEngine {
       if (shouldRestart) {
         setTimeout(() => {
           try { recognition!.start(); } catch (_e) { /* already running */ }
-        }, 300);
+        }, 50);
       } else {
         running = false;
         engine.onStatusChange('stopped');
