@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { createSpeechEngine } from '@/lib/speech';
 import { supabase } from '@/lib/supabase';
 import { getRoomChannel } from '@/lib/room';
+import type { Phrase } from '@/components/transcript-display';
 import { TranscriptDisplay } from '@/components/transcript-display';
 import { ControlsBar } from '@/components/controls-bar';
 import { RoomCodeDisplay } from '@/components/room-code-display';
@@ -23,12 +24,17 @@ function countPresence(state: Record<string, unknown[]>): { total: number } {
   return { total };
 }
 
+function formatTime(): string {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+}
+
 export default function MestrePage() {
   const params = useParams();
   const router = useRouter();
   const code = (params.code as string).toUpperCase();
 
-  const [phrases, setPhrases] = useState<string[]>([]);
+  const [phrases, setPhrases] = useState<Phrase[]>([]);
   const [interimText, setInterimText] = useState('');
   const [status, setStatus] = useState<'recording' | 'stopped'>('stopped');
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
@@ -102,12 +108,13 @@ export default function MestrePage() {
     const channel = channelRef.current;
 
     speech.onFinal = (text: string) => {
+      const time = formatTime();
       setPhrases((prev) => {
-        const next = [...prev, text];
+        const next = [...prev, { text, time }];
         return next.length > MAX_PHRASES ? next.slice(-MAX_PHRASES) : next;
       });
       setInterimText('');
-      channel.send({ type: 'broadcast', event: 'final', payload: { text } });
+      channel.send({ type: 'broadcast', event: 'final', payload: { text, time } });
     };
 
     speech.onInterim = (text: string) => {

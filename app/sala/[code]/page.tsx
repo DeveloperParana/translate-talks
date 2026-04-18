@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { getRoomChannel } from '@/lib/room';
+import type { Phrase } from '@/components/transcript-display';
 import { TranscriptDisplay } from '@/components/transcript-display';
 import { ControlsBar } from '@/components/controls-bar';
 
@@ -25,7 +26,7 @@ export default function LeitorPage() {
   const params = useParams();
   const code = (params.code as string).toUpperCase();
 
-  const [phrases, setPhrases] = useState<string[]>([]);
+  const [phrases, setPhrases] = useState<Phrase[]>([]);
   const [interimText, setInterimText] = useState('');
   const [status, setStatus] = useState<'connected' | 'disconnected'>('disconnected');
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
@@ -57,7 +58,7 @@ export default function LeitorPage() {
     channel
       .on('broadcast', { event: 'final' }, ({ payload }) => {
         setPhrases((prev) => {
-          const next = [...prev, payload.text];
+          const next = [...prev, { text: payload.text, time: payload.time || '' }];
           return next.length > MAX_PHRASES ? next.slice(-MAX_PHRASES) : next;
         });
         setInterimText('');
