@@ -33,6 +33,10 @@ export function createSpeechEngine(): SpeechEngine {
   let recognition: SpeechRecognition | null = null;
   let shouldRestart = false;
   let running = false;
+  let restartAttempts = 0;
+
+  const RESTART_BASE_DELAY = 150;
+  const MAX_RESTART_ATTEMPTS = 5;
 
   const engine: SpeechEngine = {
     onInterim: () => {},
@@ -44,26 +48,58 @@ export function createSpeechEngine(): SpeechEngine {
     get supported() { return true; },
 
     start() {
-      if (!recognition) initRecognition();
       shouldRestart = true;
       running = true;
+      restartAttempts = 0;
       engine.onStatusChange('recording');
-      try { recognition!.start(); } catch (_e) { /* already started */ }
+      safeStart();
     },
 
     stop() {
       shouldRestart = false;
       running = false;
+      restartAttempts = 0;
       engine.onStatusChange('stopped');
       try { recognition?.stop(); } catch (_e) { /* already stopped */ }
     },
   };
+
+  function safeStart() {
+    if (!shouldRestart) return;
+
+    // Re-create instance if stale (after multiple failures)
+    if (!recognition || restartAttempts >= 3) {
+      initRecognition();
+      restartAttempts = 0;
+    }
+
+    try {
+      recognition!.start();
+      restartAttempts = 0;
+    } catch (_e) {
+      restartAttempts++;
+      if (restartAttempts < MAX_RESTART_ATTEMPTS) {
+        const delay = RESTART_BASE_DELAY * Math.pow(2, restartAttempts - 1);
+        setTimeout(safeStart, delay);
+      } else {
+        // Exhausted retries — re-create and try one last time
+        initRecognition();
+        restartAttempts = 0;
+        try { recognition!.start(); } catch (_e2) {
+          running = false;
+          engine.onError('not-allowed');
+          engine.onStatusChange('stopped');
+        }
+      }
+    }
+  }
 
   function initRecognition() {
     recognition = new SpeechRecognition!();
     recognition.lang = 'pt-BR';
     recognition.continuous = true;
     recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -79,9 +115,7 @@ export function createSpeechEngine(): SpeechEngine {
 
     recognition.onend = () => {
       if (shouldRestart) {
-        setTimeout(() => {
-          try { recognition!.start(); } catch (_e) { /* already running */ }
-        }, 50);
+        setTimeout(safeStart, RESTART_BASE_DELAY);
       } else {
         running = false;
         engine.onStatusChange('stopped');
@@ -91,14 +125,11 @@ export function createSpeechEngine(): SpeechEngine {
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       if (['no-speech', 'aborted'].includes(event.error)) return;
 
-      // Network and audio-capture errors: notify but keep auto-restart active
       if (event.error === 'network' || event.error === 'audio-capture') {
         engine.onError(event.error);
-        // onend will fire after this and handle restart via shouldRestart
         return;
       }
 
-      // Fatal errors: stop completely
       shouldRestart = false;
       running = false;
       engine.onError(event.error);
