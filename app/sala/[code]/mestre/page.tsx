@@ -44,11 +44,16 @@ export default function MestrePage() {
   const [blocked, setBlocked] = useState(false);
   const [connectionError, setConnectionError] = useState('');
 
-  const speechRef = useRef(createSpeechEngine());
-  const channelRef = useRef(supabase.channel(getRoomChannel(code)));
+  const speechRef = useRef<ReturnType<typeof createSpeechEngine> | null>(null);
+  if (speechRef.current === null) speechRef.current = createSpeechEngine();
+
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  if (channelRef.current === null) channelRef.current = supabase.channel(getRoomChannel(code));
+
   const myIdRef = useRef(crypto.randomUUID());
   const interimTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingInterimRef = useRef<string | null>(null);
+  const phraseIdRef = useRef(0);
 
   useEffect(() => {
     setTheme(localStorage.getItem('tt-theme') || 'dark');
@@ -69,7 +74,7 @@ export default function MestrePage() {
   }, []);
 
   useEffect(() => {
-    const channel = channelRef.current;
+    const channel = channelRef.current!;
 
     channel.on('presence', { event: 'sync' }, () => {
       const state = channel.presenceState();
@@ -109,13 +114,14 @@ export default function MestrePage() {
   }, []);
 
   useEffect(() => {
-    const speech = speechRef.current;
-    const channel = channelRef.current;
+    const speech = speechRef.current!;
+    const channel = channelRef.current!;
 
     speech.onFinal = (text: string) => {
       const time = formatTime();
+      const id = ++phraseIdRef.current;
       setPhrases((prev) => {
-        const next = [...prev, { text, time }];
+        const next = [...prev, { id, text, time }];
         return next.length > MAX_PHRASES ? next.slice(-MAX_PHRASES) : next;
       });
       setInterimText('');
@@ -153,10 +159,14 @@ export default function MestrePage() {
       setErrorText(messages[error] || `Erro: ${error}`);
       setTimeout(() => setErrorText(''), 5000);
     };
+
+    return () => {
+      speech.stop();
+    };
   }, []);
 
   const handleToggle = useCallback(() => {
-    const speech = speechRef.current;
+    const speech = speechRef.current!;
     if (speech.isRunning) { speech.stop(); } else { speech.start(); }
   }, []);
 
@@ -188,7 +198,7 @@ export default function MestrePage() {
   const handleClear = useCallback(() => {
     setPhrases([]);
     setInterimText('');
-    channelRef.current.send({ type: 'broadcast', event: 'clear', payload: {} });
+    channelRef.current!.send({ type: 'broadcast', event: 'clear', payload: {} });
   }, []);
 
   if (blocked) {
