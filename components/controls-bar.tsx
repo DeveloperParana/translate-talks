@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 
 type Status = 'recording' | 'stopped' | 'connected' | 'disconnected';
 
@@ -31,6 +32,7 @@ export function ControlsBar({
 }: ControlsBarProps) {
   const controlsRef = useRef<HTMLElement>(null);
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const router = useRouter();
 
   const resetHideTimer = useCallback(() => {
     controlsRef.current?.classList.remove('hidden');
@@ -57,6 +59,7 @@ export function ControlsBar({
   return (
     <header ref={controlsRef} className="controls">
       <img src="/devparana.svg" alt="DevParaná" className="logo" />
+      <button className="ctrl-btn" onClick={() => router.push('/')} title="Voltar ao início">🏠</button>
       {showMicButton && onToggle && (
         <button className="ctrl-btn" onClick={onToggle} title="Iniciar/Parar">
           {toggleIcon}
