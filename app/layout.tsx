@@ -12,6 +12,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="pt-BR" data-theme="dark" suppressHydrationWarning>
       <head>
         <meta name="theme-color" content="#1a1a2e" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
         <script
           dangerouslySetInnerHTML={{
             __html: `
