@@ -41,6 +41,15 @@ export function createSpeechEngine(): SpeechEngine {
   const RESTART_BASE_DELAY = 100;
   const MAX_RESTART_ATTEMPTS = 5;
 
+  // Dedupe entre sessoes: o continuous do Chrome reinicia e re-processa audio
+  // sobreposto, emitindo finais progressivos (ex.: 'mas eu' -> 'mas eu poderia').
+  // Bufferiza o ultimo final e, se o proximo for prefixo/superset, substitui em
+  // vez de emitir duas vezes. Aplicado tambem aos chunks para cobrir o caso de
+  // chunk emitido na sessao anterior reaparecer dentro de um final da nova.
+  const FINAL_DEBOUNCE_MS = 400;
+  let pendingFinal = '';
+  let pendingFinalTimer: ReturnType<typeof setTimeout> | null = null;
+
   let recognition: SpeechRecognition | null = null;
   let shouldRestart = false;
   let running = false;
@@ -60,12 +69,53 @@ export function createSpeechEngine(): SpeechEngine {
     }
   }
 
+  function flushPendingFinal() {
+    if (pendingFinalTimer) {
+      clearTimeout(pendingFinalTimer);
+      pendingFinalTimer = null;
+    }
+    if (pendingFinal) {
+      const toEmit = pendingFinal;
+      pendingFinal = '';
+      engine.onFinal(toEmit);
+    }
+  }
+
+  // Roteia toda emissao de final pelo buffer de dedupe. Se o novo texto for
+  // prefixo/superset do pendente, substitui (mantendo o mais longo). Caso
+  // contrario, descarrega o pendente e bufferiza o novo. Em ambos os casos,
+  // re-arma o debounce.
+  function emitFinalBuffered(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    const isProgressive = pendingFinal.length > 0 &&
+      (trimmed.startsWith(pendingFinal) || pendingFinal.startsWith(trimmed));
+
+    if (isProgressive) {
+      if (trimmed.length > pendingFinal.length) pendingFinal = trimmed;
+    } else {
+      flushPendingFinal();
+      pendingFinal = trimmed;
+    }
+
+    if (pendingFinalTimer) clearTimeout(pendingFinalTimer);
+    pendingFinalTimer = setTimeout(() => {
+      pendingFinalTimer = null;
+      if (pendingFinal) {
+        const toEmit = pendingFinal;
+        pendingFinal = '';
+        engine.onFinal(toEmit);
+      }
+    }, FINAL_DEBOUNCE_MS);
+  }
+
   function commitChunk(chunkText: string) {
     const chunkTokens = chunkText.trim().split(/\s+/).filter(Boolean);
     if (chunkTokens.length === 0) return;
     consumedWords += chunkTokens.length;
     lastInterim = '';
-    engine.onFinal(chunkText);
+    emitFinalBuffered(chunkText);
   }
 
   function resetUtteranceState() {
@@ -97,6 +147,7 @@ export function createSpeechEngine(): SpeechEngine {
       running = false;
       restartAttempts = 0;
       resetUtteranceState();
+      flushPendingFinal();
       engine.onStatusChange('stopped');
       try { recognition?.stop(); } catch (_e) { /* already stopped */ }
     },
@@ -151,7 +202,7 @@ export function createSpeechEngine(): SpeechEngine {
           const tokens = transcript.trim().split(/\s+/).filter(Boolean);
           const start = Math.min(consumedWords, tokens.length);
           const text = tokens.slice(start).join(' ').trim();
-          if (text) engine.onFinal(text);
+          if (text) emitFinalBuffered(text);
           resetUtteranceState();
         } else {
           interimBuf += transcript;
@@ -195,9 +246,12 @@ export function createSpeechEngine(): SpeechEngine {
 
     recognition.onend = () => {
       if (shouldRestart) {
+        // Nao descarrega o pendente aqui: queremos que um final progressivo da
+        // proxima sessao possa substituir o buffer antes de emitir.
         setTimeout(safeStart, RESTART_BASE_DELAY);
       } else {
         running = false;
+        flushPendingFinal();
         engine.onStatusChange('stopped');
       }
     };
