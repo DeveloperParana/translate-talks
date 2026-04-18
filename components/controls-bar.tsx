@@ -13,6 +13,7 @@ interface ControlsBarProps {
   onThemeToggle: () => void;
   onFontUp: () => void;
   onFontDown: () => void;
+  connectedCount?: number;
 }
 
 const HIDE_DELAY = 3000;
@@ -26,6 +27,7 @@ export function ControlsBar({
   onThemeToggle,
   onFontUp,
   onFontDown,
+  connectedCount,
 }: ControlsBarProps) {
   const controlsRef = useRef<HTMLElement>(null);
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -68,6 +70,11 @@ export function ControlsBar({
       {roomCode && (
         <span style={{ color: 'var(--text-muted)', fontSize: '14px', marginLeft: '8px' }}>
           Sala: <strong style={{ color: 'var(--text-final)', letterSpacing: '2px' }}>{roomCode}</strong>
+        </span>
+      )}
+      {connectedCount !== undefined && connectedCount > 0 && (
+        <span className="connected-badge" title="Pessoas conectadas">
+          👥 {connectedCount}
         </span>
       )}
       <span className="status" title="Status">{statusIcon}</span>

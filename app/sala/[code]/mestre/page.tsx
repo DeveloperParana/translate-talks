@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { createSpeechEngine } from '@/lib/speech';
 import { supabase } from '@/lib/supabase';
 import { getRoomChannel } from '@/lib/room';
@@ -15,8 +15,21 @@ const MAX_FONT_SIZE = 96;
 const FONT_STEP = 8;
 const DEFAULT_FONT_SIZE = 48;
 
+function countPresence(state: Record<string, unknown[]>): { total: number; hasMestre: boolean } {
+  let total = 0;
+  let hasMestre = false;
+  for (const presences of Object.values(state)) {
+    for (const p of presences) {
+      total++;
+      if ((p as { role?: string }).role === 'mestre') hasMestre = true;
+    }
+  }
+  return { total, hasMestre };
+}
+
 export default function MestrePage() {
   const params = useParams();
+  const router = useRouter();
   const code = (params.code as string).toUpperCase();
 
   const [phrases, setPhrases] = useState<string[]>([]);
@@ -25,9 +38,12 @@ export default function MestrePage() {
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
   const [theme, setTheme] = useState('dark');
   const [errorText, setErrorText] = useState('');
+  const [connectedCount, setConnectedCount] = useState(0);
+  const [blocked, setBlocked] = useState(false);
 
   const speechRef = useRef(createSpeechEngine());
   const channelRef = useRef(supabase.channel(getRoomChannel(code)));
+  const myIdRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
     setTheme(localStorage.getItem('tt-theme') || 'dark');
@@ -37,7 +53,31 @@ export default function MestrePage() {
 
   useEffect(() => {
     const channel = channelRef.current;
-    channel.subscribe();
+
+    channel.on('presence', { event: 'sync' }, () => {
+      const state = channel.presenceState();
+      const { total, hasMestre } = countPresence(state);
+      setConnectedCount(total);
+
+      // Check if another mestre exists (not us)
+      let otherMestre = false;
+      for (const presences of Object.values(state)) {
+        for (const p of presences) {
+          const pr = p as { role?: string; id?: string };
+          if (pr.role === 'mestre' && pr.id !== myIdRef.current) {
+            otherMestre = true;
+          }
+        }
+      }
+      if (otherMestre) setBlocked(true);
+    });
+
+    channel.subscribe(async (channelStatus) => {
+      if (channelStatus === 'SUBSCRIBED') {
+        await channel.track({ role: 'mestre', id: myIdRef.current });
+      }
+    });
+
     return () => { supabase.removeChannel(channel); };
   }, []);
 
@@ -102,11 +142,27 @@ export default function MestrePage() {
     });
   }, []);
 
+  if (blocked) {
+    return (
+      <div className="home">
+        <img src="/devparana.svg" alt="DevParaná" className="home-logo" />
+        <h1>Sala Ocupada</h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: '18px', textAlign: 'center', maxWidth: '400px' }}>
+          Já existe um mestre nesta sala. Apenas um mestre pode transmitir por vez.
+        </p>
+        <button className="btn-primary" style={{ maxWidth: '320px' }} onClick={() => router.push('/')}>
+          Voltar ao início
+        </button>
+      </div>
+    );
+  }
+
   return (
     <>
       <ControlsBar status={status} onToggle={handleToggle} showMicButton={true}
         roomCode={code} theme={theme} onThemeToggle={handleThemeToggle}
-        onFontUp={handleFontUp} onFontDown={handleFontDown} />
+        onFontUp={handleFontUp} onFontDown={handleFontDown}
+        connectedCount={connectedCount} />
       <TranscriptDisplay phrases={phrases} interimText={errorText || interimText} fontSize={fontSize} />
       <RoomCodeDisplay code={code} />
     </>

@@ -59,6 +59,10 @@ body { background-color: var(--bg); }
 }
 .ctrl-btn:hover { background: var(--ctrl-btn-hover); }
 .status { margin-left: auto; font-size: 20px; line-height: 1; }
+.connected-badge {
+  color: var(--text-muted); font-size: 14px; font-weight: 600;
+  display: flex; align-items: center; gap: 4px;
+}
 
 .transcript-area {
   height: 100vh; display: flex; flex-direction: column;

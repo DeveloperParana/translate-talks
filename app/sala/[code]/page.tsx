@@ -13,6 +13,14 @@ const MAX_FONT_SIZE = 96;
 const FONT_STEP = 8;
 const DEFAULT_FONT_SIZE = 48;
 
+function countPresence(state: Record<string, unknown[]>): number {
+  let total = 0;
+  for (const presences of Object.values(state)) {
+    total += presences.length;
+  }
+  return total;
+}
+
 export default function LeitorPage() {
   const params = useParams();
   const code = (params.code as string).toUpperCase();
@@ -22,6 +30,7 @@ export default function LeitorPage() {
   const [status, setStatus] = useState<'connected' | 'disconnected'>('disconnected');
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
   const [theme, setTheme] = useState('dark');
+  const [connectedCount, setConnectedCount] = useState(0);
 
   useEffect(() => {
     setTheme(localStorage.getItem('tt-theme') || 'dark');
@@ -43,9 +52,13 @@ export default function LeitorPage() {
       .on('broadcast', { event: 'interim' }, ({ payload }) => {
         setInterimText(payload.text);
       })
-      .subscribe((channelStatus) => {
+      .on('presence', { event: 'sync' }, () => {
+        setConnectedCount(countPresence(channel.presenceState()));
+      })
+      .subscribe(async (channelStatus) => {
         if (channelStatus === 'SUBSCRIBED') {
           setStatus('connected');
+          await channel.track({ role: 'leitor' });
         }
       });
 
@@ -81,7 +94,8 @@ export default function LeitorPage() {
     <>
       <ControlsBar status={status} showMicButton={false} roomCode={code}
         theme={theme} onThemeToggle={handleThemeToggle}
-        onFontUp={handleFontUp} onFontDown={handleFontDown} />
+        onFontUp={handleFontUp} onFontDown={handleFontDown}
+        connectedCount={connectedCount} />
       <TranscriptDisplay phrases={phrases} interimText={interimText} fontSize={fontSize}
         waitingMessage="Aguardando mestre iniciar a transcrição..." />
     </>
