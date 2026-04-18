@@ -10,7 +10,7 @@ import { TranscriptDisplay } from '@/components/transcript-display';
 import { ControlsBar } from '@/components/controls-bar';
 import { RoomCodeDisplay } from '@/components/room-code-display';
 
-const MAX_PHRASES = 3;
+const MAX_PHRASES = 5;
 const MIN_FONT_SIZE = 24;
 const MAX_FONT_SIZE = 96;
 const FONT_STEP = 8;
