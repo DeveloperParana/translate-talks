@@ -1,0 +1,108 @@
+---
+description: Constraint inegociavel: a transcricao precisa permanecer realtime
+alwaysApply: true
+---
+
+# Realtime nao pode ser perdido
+
+Este projeto e legenda ao vivo pra publico surdo em palestras. Latencia
+percebida e UX critica: cada 100 ms a mais e perda de acessibilidade.
+
+## Regras
+
+- **Nunca** introduza debounce/throttle no caminho `interim -> tela` do
+  mestre nem no broadcast pro leitor.
+- Pos-processamento (correcao fuzzy, vocabulario, etc.) deve rodar de
+  forma **sincrona e barata**. Se passar de ~10 ms por chamada, mover pra
+  Web Worker ou aplicar so no `final`.
+- Antes de adicionar qualquer `setTimeout` no pipeline de fala, justifique
+  por que o tradeoff de latencia compensa.
+- Ao revisar mudancas em `lib/speech/**` ou `app/sala/[code]/mestre/page.tsx`,
+  meca o atraso end-to-end (fala -> texto na tela do leitor) e compare
+  com o baseline antes da mudanca.
+
+## Pontos de latencia conhecidos hoje
+
+| Local | Valor | Observacao |
+|---|---|---|
+| `FINAL_DEBOUNCE_MS` em `lib/speech/web-speech.ts` | 400 ms | Dedupe entre sessoes. Adaptativo: so dispara dentro de `inRestartWindow`. |
+| `RESTART_DEDUPE_WINDOW_MS` | 1500 ms | Janela apos `onend` onde finais sao bufferizados. |
+| `CHUNK_PAUSE_MS` em `lib/speech/web-speech.ts` | 150 ms | Soft chunking. |
+| Throttle de interim broadcast em `mestre/page.tsx` | 150 ms | Limite do Supabase. So afeta leitor, nao mestre. |
+| `correctTokens` em cada interim | <5 ms tipico | Aceitavel pra vocab <200 entradas. |
+
+## Latencia medida em produção (Chrome 135 cloud, sem on-device)
+
+Capturada via `lib/speech/debug-capture.ts` em palestra real (2026-04-18,
+44s, 6 finals, 130 eventos):
+
+| Metric | Valor |
+|---|---|
+| primeiro interim -> final do mesmo resultIndex (p50) | 4.8s |
+| primeiro interim -> final do mesmo resultIndex (p90) | 8.3s |
+| primeiro interim -> final do mesmo resultIndex (max) | 9.4s |
+| confidence p50 (alt[0]) | 0.81 |
+| % finais com >1 alternativa | 100% (geralmente 4) |
+| hard-cap chunks emitidos | 40% dos emits |
+
+Conclusao: cloud do Chrome eh fundamentalmente lento pra fechar finais.
+Tela do mestre fica decente porque interims ja aparecem em ~300ms; mas
+o "commit" final demora ~5s. Para palestra de 1h isso significa o leitor
+fica 5s atras do palestrante o tempo todo.
+
+Ataque preferido: forcar usuario a usar Chrome 139+ (on-device). Em testes
+informais a latencia cai de ~5s pra ~300ms.
+
+## Solucoes preferidas pra ganhar latencia
+
+1. **`recognition.processLocally = true`** (Chrome 139+, suporta pt-BR).
+   Elimina round-trip pro servidor do Google. Caveats validados via probe
+   automatizado contra Chrome 147 headless (`probe-cdp.mjs`):
+   - `SR.available({langs:['pt-BR'], processLocally: true})` retorna
+     `'downloadable'` em Chrome novo SEM modelo cacheado. Modelo NAO vem
+     pre-instalado.
+   - `SR.install(...)` LANCA `SecurityError` quando availability eh
+     `'downloadable'` e nao ha user gesture ativo (mensagem exata:
+     "Requires handling a user gesture when availability is 'downloadable'").
+   - Por isso `bootstrapOnDevice` so dispara `install()` dentro do callstack
+     do `engine.start()`, que eh chamado a partir do click do usuario no
+     botao do microfone. Em `recognition.onend` (background) so checamos
+     `available()` pra ver se download terminou; nunca chamamos install.
+   - Quando install falha (gesture expirou), UI mostra botao
+     "Baixar modelo on-device" pra usuario tentar manualmente.
+2. **Debounce adaptativo de finais**: 0 ms em estado estavel; ativa
+   janela curta (~200 ms) so depois de `onend` pra capturar progressivos
+   de restart.
+3. **Emitir interim do chunk pendente**: enquanto `pendingFinal` espera
+   debounce, mostrar como interim pro mestre/leitor (zero latencia
+   percebida; commit final continua deduplicado).
+4. **Inverted index no `correctTokens`**: lookup por primeiro token em
+   vez de scan linear. Necessario so se vocab crescer >500 entradas.
+
+## Como medir
+
+Use o botao de debug (alvo) no mestre pra gravar audio + log JSON, depois:
+
+```bash
+npx tsx scripts/analyze-debug.mts ~/Downloads/speech-debug-*.json
+```
+
+O analyzer cospe distribuicao de latencia, hits do vocab, drops por
+filtro de ruido, picker behavior, etc. Compare antes/depois de qualquer
+mudanca em `lib/speech/**` ou `lib/vocabulary.ts`.
+
+## Como testar mudancas no fluxo on-device
+
+Existem dois probes automatizados na raiz do repo (gitignorados):
+
+- `probe-cdp.mjs`: stub direto sobre `SpeechRecognition.available/install`
+  pra inspecionar respostas reais do Chrome (uso unico, descartavel).
+- `probe-e2e-scenarios.mjs`: 4 cenarios E2E rodando contra `npm run dev`
+  com Chrome 147 portatil (`/tmp/chrome-test/`). Cobrem:
+  - downloadable + install OK -> badge "On-device"
+  - already available -> badge "On-device" sem install
+  - install rejeitado (gesture expirou) -> botao "Baixar modelo on-device"
+  - Chrome <139 -> sem badge, sem crash
+
+Antes de mexer em `bootstrapOnDevice` ou `installOnDevice`, rode os
+cenarios pra garantir que os 4 caminhos continuam passando.

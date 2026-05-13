@@ -3,12 +3,25 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createSpeechEngine } from '@/lib/speech';
+import type { OnDeviceStatus, SpeechDebugEvent } from '@/lib/speech';
+import {
+  startDebugCapture,
+  downloadDebugSession,
+  type DebugCaptureSession,
+} from '@/lib/speech/debug-capture';
 import { supabase } from '@/lib/supabase';
 import { getRoomChannel } from '@/lib/room';
 import type { Phrase } from '@/components/transcript-display';
 import { TranscriptDisplay } from '@/components/transcript-display';
 import { ControlsBar } from '@/components/controls-bar';
 import { RoomCodeDisplay } from '@/components/room-code-display';
+import { VocabularyModal } from '@/components/vocabulary-modal';
+import {
+  BASE_VOCABULARY,
+  loadRoomVocabulary,
+  mergeVocabularies,
+  type VocabularyEntry,
+} from '@/lib/vocabulary';
 
 const MAX_PHRASES = 5;
 const MIN_FONT_SIZE = 24;
@@ -43,9 +56,22 @@ export default function MestrePage() {
   const [connectedCount, setConnectedCount] = useState(0);
   const [blocked, setBlocked] = useState(false);
   const [connectionError, setConnectionError] = useState('');
+  const [vocabulary, setVocabulary] = useState<VocabularyEntry[]>(BASE_VOCABULARY);
+  const [showVocabModal, setShowVocabModal] = useState(false);
+  const [debugRecording, setDebugRecording] = useState(false);
+  const [onDeviceStatus, setOnDeviceStatus] = useState<OnDeviceStatus>('unknown');
 
+  // Engine recriado quando o vocabulario muda (efeito abaixo). Ref guarda a
+  // instancia ativa pra os callbacks de UI sem disparar re-render.
   const speechRef = useRef<ReturnType<typeof createSpeechEngine> | null>(null);
-  if (speechRef.current === null) speechRef.current = createSpeechEngine();
+
+  // Sessao de debug ativa (audio + log). Ref pra nao re-renderizar a cada
+  // evento; o engine empurra direto via callback estavel abaixo.
+  const debugSessionRef = useRef<DebugCaptureSession | null>(null);
+  const handleDebugEventRef = useRef<((event: SpeechDebugEvent) => void) | undefined>(undefined);
+  handleDebugEventRef.current = (event) => {
+    debugSessionRef.current?.pushEvent(event);
+  };
 
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   if (channelRef.current === null) channelRef.current = supabase.channel(getRoomChannel(code));
@@ -59,7 +85,8 @@ export default function MestrePage() {
     setTheme(localStorage.getItem('tt-theme') || 'dark');
     const saved = parseInt(localStorage.getItem('tt-fontSize') || '', 10);
     if (saved >= MIN_FONT_SIZE && saved <= MAX_FONT_SIZE) setFontSize(saved);
-  }, []);
+    setVocabulary(mergeVocabularies(BASE_VOCABULARY, loadRoomVocabulary(code)));
+  }, [code]);
 
   useEffect(() => {
     const goOffline = () => setConnectionError('Sem conexão com a internet');
@@ -114,8 +141,23 @@ export default function MestrePage() {
   }, []);
 
   useEffect(() => {
-    const speech = speechRef.current!;
     const channel = channelRef.current!;
+    // Se ja existia engine (vocabulario mudou em runtime), preserva o estado
+    // de gravacao pra reiniciar o novo engine na mesma sessao.
+    const wasRunning = speechRef.current?.isRunning ?? false;
+    if (speechRef.current) {
+      speechRef.current.stop();
+    }
+
+    const speech = createSpeechEngine({
+      vocabulary,
+      // Indireciona pelo ref pra sobreviver a recriacoes da engine sem
+      // perder eventos quando o debug ja esta ativo.
+      onDebugEvent: (event) => handleDebugEventRef.current?.(event),
+      onOnDeviceStatusChange: (s) => setOnDeviceStatus(s),
+    });
+    speechRef.current = speech;
+    setOnDeviceStatus(speech.onDeviceStatus);
 
     speech.onFinal = (text: string) => {
       const time = formatTime();
@@ -160,10 +202,12 @@ export default function MestrePage() {
       setTimeout(() => setErrorText(''), 5000);
     };
 
+    if (wasRunning) speech.start();
+
     return () => {
       speech.stop();
     };
-  }, []);
+  }, [vocabulary]);
 
   const handleToggle = useCallback(() => {
     const speech = speechRef.current!;
@@ -201,6 +245,60 @@ export default function MestrePage() {
     channelRef.current!.send({ type: 'broadcast', event: 'clear', payload: {} });
   }, []);
 
+  const handleVocabulary = useCallback(() => {
+    setShowVocabModal(true);
+  }, []);
+
+  const handleVocabularySaved = useCallback((entries: VocabularyEntry[]) => {
+    setVocabulary(mergeVocabularies(BASE_VOCABULARY, entries));
+  }, []);
+
+  const handleInstallOnDevice = useCallback(async () => {
+    const speech = speechRef.current;
+    if (!speech) return;
+    try {
+      await speech.installOnDevice();
+    } catch (err) {
+      setErrorText(`Falha ao baixar modelo on-device: ${err instanceof Error ? err.message : String(err)}`);
+      setTimeout(() => setErrorText(''), 5000);
+    }
+  }, []);
+
+  const handleDebugToggle = useCallback(async () => {
+    if (debugSessionRef.current) {
+      const session = debugSessionRef.current;
+      debugSessionRef.current = null;
+      setDebugRecording(false);
+      try {
+        const result = await session.stop();
+        downloadDebugSession(result);
+      } catch (err) {
+        setErrorText(`Falha ao salvar debug: ${err instanceof Error ? err.message : String(err)}`);
+        setTimeout(() => setErrorText(''), 5000);
+      }
+      return;
+    }
+    try {
+      const session = await startDebugCapture({ vocabularySize: vocabulary.length });
+      debugSessionRef.current = session;
+      setDebugRecording(true);
+    } catch (err) {
+      setErrorText(`Não foi possível iniciar debug: ${err instanceof Error ? err.message : String(err)}`);
+      setTimeout(() => setErrorText(''), 5000);
+    }
+  }, [vocabulary.length]);
+
+  // Garante que a sessao de debug eh fechada (audio liberado, log perdido)
+  // se o usuario sair da pagina sem clicar em parar.
+  useEffect(() => {
+    return () => {
+      if (debugSessionRef.current) {
+        debugSessionRef.current.abort();
+        debugSessionRef.current = null;
+      }
+    };
+  }, []);
+
   if (blocked) {
     return (
       <div className="home">
@@ -221,9 +319,15 @@ export default function MestrePage() {
       <ControlsBar status={status} onToggle={handleToggle} showMicButton={true}
         roomCode={code} theme={theme} onThemeToggle={handleThemeToggle}
         onFontUp={handleFontUp} onFontDown={handleFontDown}
-        connectedCount={connectedCount} onClear={handleClear} connectionError={connectionError} />
+        connectedCount={connectedCount} onClear={handleClear}
+        onVocabulary={handleVocabulary}
+        onDebugToggle={handleDebugToggle} debugRecording={debugRecording}
+        onDeviceStatus={onDeviceStatus} onInstallOnDevice={handleInstallOnDevice}
+        connectionError={connectionError} />
       <TranscriptDisplay phrases={phrases} interimText={errorText || interimText} fontSize={fontSize} />
       <RoomCodeDisplay code={code} />
+      <VocabularyModal roomCode={code} open={showVocabModal}
+        onClose={() => setShowVocabModal(false)} onSaved={handleVocabularySaved} />
     </>
   );
 }
